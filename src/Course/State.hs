@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE RebindableSyntax #-}
+{-# LANGUAGE TupleSections #-}
 
 module Course.State where
 
@@ -13,6 +14,7 @@ import Course.Functor
 import Course.Applicative
 import Course.Monad
 import qualified Data.Set as S
+import Data.Char (digitToInt)
 
 -- $setup
 -- >>> import Test.QuickCheck.Function
@@ -38,8 +40,7 @@ exec ::
   State s a
   -> s
   -> s
-exec =
-  error "todo: Course.State#exec"
+exec st = snd . runState st
 
 -- | Run the `State` seeded with `s` and retrieve the resulting value.
 --
@@ -48,8 +49,7 @@ eval ::
   State s a
   -> s
   -> a
-eval =
-  error "todo: Course.State#eval"
+eval st = fst . runState st 
 
 -- | A `State` where the state also distributes into the produced value.
 --
@@ -57,8 +57,7 @@ eval =
 -- (0,0)
 get ::
   State s s
-get =
-  error "todo: Course.State#get"
+get = State $ \s -> (s,s)
 
 -- | A `State` where the resulting state is seeded with the given value.
 --
@@ -67,8 +66,11 @@ get =
 put ::
   s
   -> State s ()
-put =
-  error "todo: Course.State#put"
+put s = State $ P.const ((), s)
+
+modify :: (s -> s) -> State s ()
+modify f = get >>= put . f
+
 
 -- | Implement the `Functor` instance for `State s`.
 --
@@ -79,8 +81,8 @@ instance Functor (State s) where
     (a -> b)
     -> State s a
     -> State s b
-  (<$>) =
-    error "todo: Course.State#(<$>)"
+  f <$> (State sas) = State $ \s -> let (a, s') = sas s
+                                     in (f a, s')
 
 -- | Implement the `Applicative` instance for `State s`.
 --
@@ -96,14 +98,14 @@ instance Applicative (State s) where
   pure ::
     a
     -> State s a
-  pure =
-    error "todo: Course.State pure#instance (State s)"
+  pure a = State (a,)
   (<*>) ::
     State s (a -> b)
     -> State s a
     -> State s b
-  (<*>) =
-    error "todo: Course.State (<*>)#instance (State s)"
+  (State sf) <*> (State sa) = State $ \s -> let (f, s')  = sf s
+                                                (a, s'') = sa s'
+                                             in (f a, s'')
 
 -- | Implement the `Monad` instance for `State s`.
 --
@@ -120,8 +122,10 @@ instance Monad (State s) where
     (a -> State s b)
     -> State s a
     -> State s b
-  (=<<) =
-    error "todo: Course.State (=<<)#instance (State s)"
+  asb =<< (State sa) = State $ \s -> let (a, s')  = sa s
+                                         State sb = asb a
+                                      in sb s'
+                                      
 
 -- | Find the first element in a `List` that satisfies a given predicate.
 -- It is possible that no element is found, hence an `Optional` result.
@@ -142,8 +146,9 @@ findM ::
   (a -> f Bool)
   -> List a
   -> f (Optional a)
-findM =
-  error "todo: Course.State#findM"
+findM f = foldRight
+            (\a rest -> f a >>= bool rest (return (Full a)))
+            (return Empty)
 
 -- | Find the first element in a `List` that repeats.
 -- It is possible that no element repeats, hence an `Optional` result.
@@ -159,8 +164,13 @@ firstRepeat ::
   Ord a =>
   List a
   -> Optional a
-firstRepeat =
-  error "todo: Course.State#firstRepeat"
+firstRepeat lst = eval (findM check lst) S.empty
+  where
+    check e = do 
+      elems <- get
+      if e `S.member` elems
+        then return True
+        else modify (S.insert e) >> return False
 
 -- | Remove all duplicate elements in a `List`.
 -- /Tip:/ Use `filtering` and `State` with a @Data.Set#Set@.
@@ -172,8 +182,13 @@ distinct ::
   Ord a =>
   List a
   -> List a
-distinct =
-  error "todo: Course.State#distinct"
+distinct lst = eval (filtering check lst) S.empty
+  where 
+    check e = do
+      elems <- get
+      if e `S.member` elems
+        then return False
+        else modify (S.insert e) >> return True
 
 -- | A happy number is a positive integer, where the sum of the square of its digits eventually reaches 1 after repetition.
 -- In contrast, a sad number (not a happy number) is where the sum of the square of its digits never reaches 1
@@ -199,5 +214,10 @@ distinct =
 isHappy ::
   Integer
   -> Bool
-isHappy =
-  error "todo: Course.State#isHappy"
+isHappy x =  1 `contains` firstRepeat (results intX)
+  where
+    intX     = fromInteger x
+    digits i = digitToInt <$> show' i
+    square   = join (*) 
+    next i   = sum $ square <$> digits i
+    results  = produce next
