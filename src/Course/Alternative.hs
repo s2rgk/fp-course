@@ -37,12 +37,8 @@ import qualified Prelude as P(fmap, return, (>>=))
 -- laws relating the Applicative and Alternative are discussed here:
 -- https://wiki.haskell.org/Typeclassopedia#Laws_6
 class Applicative k => Alternative k where
-  zero ::
-    k a
-  (<|>) ::
-    k a
-    -> k a
-    -> k a
+  zero :: k a
+  (<|>) :: k a -> k a -> k a
 
 infixl 3 <|>
 
@@ -57,16 +53,12 @@ infixl 3 <|>
 -- >>> Full 3 <|> Full 4
 -- Full 3
 instance Alternative Optional where
-  zero ::
-    Optional a
-  zero =
-    error "todo: Course.Alternative zero#instance Optional"
-  (<|>) ::
-    Optional a
-    -> Optional a
-    -> Optional a
-  (<|>) =
-    error "todo: Course.Alternative (<|>)#instance Optional"
+  zero :: Optional a
+  zero = Empty
+  
+  (<|>) :: Optional a -> Optional a -> Optional a
+  (Full a) <|> _ = Full a
+  _ <|> opt = opt
 
 -- | Append the lists.
 -- This instance views lists as a non-deterministic choice between elements,
@@ -81,16 +73,11 @@ instance Alternative Optional where
 -- >>> 3 :. 4 :. 5 :. Nil <|> 6 :. 7 :. 8 :. Nil
 -- [3,4,5,6,7,8]
 instance Alternative List where
-  zero ::
-    List a
-  zero =
-    error "todo: Course.Alternative zero#instance List"
-  (<|>) ::
-    List a
-    -> List a
-    -> List a
-  (<|>) =
-    error "todo: Course.Alternative (<|>)#instance List"
+  zero :: List a
+  zero = Nil
+
+  (<|>) :: List a -> List a -> List a
+  (<|>) = (++)
 
 -- | Choose the first succeeding parser
 --
@@ -108,16 +95,15 @@ instance Alternative List where
 -- >>> parse (constantParser UnexpectedEof <|> valueParser 'v') "abc"
 -- Result >abc< 'v'
 instance Alternative Parser where
-  zero ::
-    Parser a
-  zero =
-    error "todo: Course.Alternative zero#instance Parser"
-  (<|>) ::
-    Parser a
-    -> Parser a
-    -> Parser a
-  (<|>) =
-    error "todo: Course.Alternative (<|>)#instance Parser"
+  zero :: Parser a
+  zero = P $ const UnexpectedEof
+    
+  (<|>) :: Parser a -> Parser a -> Parser a
+  (P p1) <|> (P p2) = P $ \input ->
+    let first = p1 input
+     in case first of
+       (Result _ _) -> first
+       _            -> p2 input
 
 -- | Run the provided Alternative action zero or more times, collecting
 -- a list of the results.
@@ -142,8 +128,7 @@ instance Alternative Parser where
 -- >>> parse (many (character *> valueParser 'v')) ""
 -- Result >< ""
 many :: Alternative k => k a -> k (List a)
-many =
-  error "todo: Course.Alternative many"
+many ka = some ka <|> pure Nil
 
 -- | Run the provided Alternative action one or more times, collecting
 -- a list of the results.
@@ -159,8 +144,7 @@ many =
 -- >>> isErrorResult (parse (some (character *> valueParser 'v')) "")
 -- True
 some :: Alternative k => k a -> k (List a)
-some =
-  error "todo: Course.Alternative some"
+some ka = lift2 (:.) ka (many ka)
 
 -- | Combine a list of alternatives
 --
@@ -175,5 +159,4 @@ some =
 --
 -- /Note:/ In the standard library, this function is called @asum@
 aconcat :: Alternative k => List (k a) -> k a
-aconcat =
-  error "todo: Course.Alternative aconcat"
+aconcat = foldRight (<|>) zero
