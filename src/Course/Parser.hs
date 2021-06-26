@@ -159,7 +159,7 @@ instance Applicative Parser where
   pure = valueParser
   
   (<*>) :: Parser (a -> b) -> Parser a -> Parser b
-  (P pf) <*> (P pa) = P $ \input -> onResult (pf input) $ \input' f -> f <$> pa input'
+  pf <*> pa = pf >>= \f -> f <$> pa
 
 -- | Return a parser that produces a character but fails if
 --
